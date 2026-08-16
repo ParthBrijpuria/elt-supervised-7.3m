@@ -178,8 +178,6 @@ def train(
 
         if "optimizer_state_dict" in ckpt:
             optimizer.load_state_dict(ckpt["optimizer_state_dict"])
-        if "scaler_state_dict" in ckpt and scaler.is_enabled():
-            scaler.load_state_dict(ckpt["scaler_state_dict"])
             
         start_epoch = ckpt.get("epoch", -1) + 1
         global_step = ckpt.get("global_step", 0)
@@ -325,7 +323,6 @@ def train(
                 "model_state_dict": raw_model_state,
                 "ema_state_dict": ema.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
-                "scaler_state_dict": scaler.state_dict(),
             }, best_ckpt_path)
             print(f"[*] New best model saved to {best_ckpt_path} with loss: {best_loss:.4f}!")
 
@@ -340,7 +337,6 @@ def train(
                 "model_state_dict": raw_model_state,
                 "ema_state_dict": ema.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
-                "scaler_state_dict": scaler.state_dict(),
             }, ckpt_path)
             print(f"Saved checkpoint to {ckpt_path}")
 
