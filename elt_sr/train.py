@@ -351,9 +351,10 @@ def train(
                 os.makedirs(cache_dir, exist_ok=True)
                 shutil.copy2(str(ckpt_path), f"{cache_dir}/{ckpt_path.name}")
 
-        # Visual sampling on validation/train batch every 10 epochs
-        if ((epoch + 1) % 10 == 0 or epoch == config.epochs - 1) and vae is not None:
-            raw_model.eval()
+        # Visual sampling on validation/train batch every 10 epochs (main process only)
+        if accelerator.is_main_process and ((epoch + 1) % 10 == 0 or epoch == config.epochs - 1) and vae is not None:
+            unwrapped_model = accelerator.unwrap_model(model)
+            unwrapped_model.eval()
             eval_loader = val_loader if val_loader is not None else train_loader
             if eval_loader is not None:
                 val_batch = next(iter(eval_loader))
@@ -375,7 +376,7 @@ def train(
 
                     if actual_n > 0:
                         z_pred_residual = ddim_sample_loop(
-                            raw_model, z_base_val, schedule, ddim_steps=50, num_loops=config.max_loops, device=device, verbose=False
+                            unwrapped_model, z_base_val, schedule, ddim_steps=50, num_loops=config.max_loops, device=device, verbose=False
                         )
                         z_pred_hq = z_base_val + z_pred_residual
                         img_pred = vae.decode(z_pred_hq)
@@ -392,7 +393,7 @@ def train(
                         save_path = samples_dir / f"ep{epoch+1}_sample.png"
                         save_image(row_grid, save_path, nrow=1, normalize=True)
                         print(f"Saved 5-sample visual grid (LQ -> Arrow -> HQ) to {save_path}")
-            raw_model.train()
+            unwrapped_model.train()
 
 
 if __name__ == "__main__":
