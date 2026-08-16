@@ -355,6 +355,8 @@ def train(
             }, latest_ckpt_path)
             print(f"[*] Rolling checkpoint saved to {latest_ckpt_path}")
             if os.path.exists("/kaggle/working/elt_cache"):
+                cache_dir = "/kaggle/working/elt_cache/checkpoints"
+                os.makedirs(cache_dir, exist_ok=True)
                 shutil.copy2(str(latest_ckpt_path), f"{cache_dir}/elt_sr_latest.pt")
 
         # Visual sampling on validation/train batch every 10 epochs (main process only)
