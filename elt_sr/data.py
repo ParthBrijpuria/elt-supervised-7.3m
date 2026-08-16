@@ -170,23 +170,17 @@ class SRDataset(Dataset):
         img = Image.open(self.image_paths[idx]).convert("RGB")
         img = self.to_tensor(img)  # [3, H, W], values in [0, 1]
 
-        # Ensure image is large enough for cropping
+        # Ensure image is large enough, but in this task we want to 
+        # specifically downscale the 128x128 FFHQ images directly to hq_size (32x32)
         _, H, W = img.shape
-        if H < self.hq_size or W < self.hq_size:
-            # Resize smallest dimension to hq_size
-            min_side = min(H, W)
-            new_h = max(self.hq_size, int(H * self.hq_size / min_side))
-            new_w = max(self.hq_size, int(W * self.hq_size / min_side))
+        if H != self.hq_size or W != self.hq_size:
             img = F.interpolate(
-                img.unsqueeze(0), size=(new_h, new_w), mode="bicubic", align_corners=False
+                img.unsqueeze(0), size=(self.hq_size, self.hq_size), mode="bicubic", align_corners=False
             ).squeeze(0)
             img = torch.clamp(img, 0.0, 1.0)
-            _, H, W = img.shape
 
-        # Random crop to hq_size × hq_size
-        top = torch.randint(0, H - self.hq_size + 1, (1,)).item()
-        left = torch.randint(0, W - self.hq_size + 1, (1,)).item()
-        i_hq = img[:, top : top + self.hq_size, left : left + self.hq_size]
+        # The HQ image is the downscaled 32x32 image
+        i_hq = img
 
         # Data augmentation
         if self.augment:
