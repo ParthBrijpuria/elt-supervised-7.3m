@@ -33,6 +33,7 @@ from elt_sr.diffusion import (
 from elt_sr.data import create_dataloaders
 from elt_sr.ema import EMA
 from elt_sr.vae import VAEWrapper
+from accelerate import Accelerator
 
 
 def create_arrow_tensor(height: int, width: int = 40, bg_color=(30, 30, 30), arrow_color=(220, 220, 220)) -> torch.Tensor:
@@ -109,8 +110,13 @@ def train(
     os.makedirs(output_dir, exist_ok=True)
     samples_dir = Path(output_dir) / "samples"
     os.makedirs(samples_dir, exist_ok=True)
-    config.save(os.path.join(output_dir, "config.json"))
-    device = torch.device(device)
+
+    use_bfloat16 = kwargs.get("bfloat16", True) and torch.cuda.is_bf16_supported()
+    accelerator = Accelerator(mixed_precision="bf16" if use_bfloat16 else "fp16")
+    device = accelerator.device
+
+    if accelerator.is_main_process:
+        config.save(os.path.join(output_dir, "config.json"))
 
     # 0. H100 / CUDA Speed Optimizations
     if device.type == "cuda":
@@ -125,7 +131,7 @@ def train(
         vae = VAEWrapper(device=device)
 
     # 2. Setup Model & Optimizers
-    raw_model = create_elt_sr(config).to(device)
+    raw_model = create_elt_sr(config)
     ema = EMA(raw_model, decay=config.ema_decay)
     optimizer = AdamW(raw_model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
 
@@ -139,18 +145,7 @@ def train(
         except Exception as e:
             print(f"torch.compile failed, falling back to standard execution: {e}")
             
-    # Add DataParallel if num_gpus > 1
-    num_gpus = kwargs.get("num_gpus", 1)
-    if device.type == "cuda" and num_gpus > 1 and torch.cuda.device_count() >= num_gpus:
-        print(f"Wrapping model in DataParallel for {num_gpus} GPUs...")
-        model = torch.nn.DataParallel(model, device_ids=list(range(num_gpus)))
 
-    use_amp = kwargs.get("use_amp", getattr(config, "use_amp", True)) and device.type == "cuda"
-    use_bfloat16 = kwargs.get("bfloat16", True) and device.type == "cuda" and torch.cuda.is_bf16_supported()
-    amp_dtype = torch.bfloat16 if use_bfloat16 else torch.float16
-    
-    # bfloat16 does not require dynamic loss scaling (GradScaler)
-    scaler = torch.amp.GradScaler("cuda", enabled=use_amp and not use_bfloat16)
 
     # 3. Checkpoint Resumption (Restore state if available)
     start_epoch = 0
@@ -220,13 +215,15 @@ def train(
         val_split_size=getattr(config, "val_split_size", 2000),
     )
 
+    model, optimizer, train_loader, val_loader = accelerator.prepare(model, optimizer, train_loader, val_loader)
+
     grad_accum_steps = getattr(config, "grad_accum_steps", 1)
     total_steps = config.epochs * (len(train_loader) // grad_accum_steps)
 
-    print(f"Starting training on {device}...")
-    print(f"Total steps: {total_steps}, Epochs: {config.epochs}, AMP Dtype: {'bfloat16' if use_bfloat16 else 'float16'}")
+    if accelerator.is_main_process: print(f"Starting training on {device}...")
+    if accelerator.is_main_process: print(f"Total steps: {total_steps}, Epochs: {config.epochs}, AMP Dtype: {'bfloat16' if use_bfloat16 else 'float16'}")
     if latent_file:
-        print(f"Using pre-encoded latents from {latent_file} (Zero VAE latency during training)!")
+        if accelerator.is_main_process: print(f"Using pre-encoded latents from {latent_file} (Zero VAE latency during training)!")
 
     # 6. Training Loop
     model.train()
@@ -234,7 +231,7 @@ def train(
         epoch_loss = 0.0
         optimizer.zero_grad()
         
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{config.epochs}")
+        pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{config.epochs}", disable=not accelerator.is_main_process)
         for step_idx, batch in enumerate(pbar):
             # Get data with async non_blocking transfers
             if "z_hq" in batch and "z_base" in batch:
@@ -275,40 +272,30 @@ def train(
             # Compute current λ for curriculum
             lam = get_lambda(global_step, max(1, total_steps))
 
-            # Mixed precision forward pass
-            with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
-                outputs = model(x_t=x_t, i_base=cond, t=t, l_int=l_int)
+            # Forward pass
+            outputs = model(x_t=x_t, i_base=cond, t=t, l_int=l_int)
 
-                eps_teacher = outputs["eps_teacher"]
-                eps_student = outputs["eps_student"]
+            eps_teacher = outputs["eps_teacher"]
+            eps_student = outputs["eps_student"]
 
-                # Compute ILSD Loss
-                loss_dict = compute_ilsd_loss(
-                    eps_teacher=eps_teacher,
-                    eps_student=eps_student,
-                    noise=noise,
-                    t=t,
-                    num_timesteps=T,
-                    lam=lam,
-                )
-                loss = loss_dict["loss_total"] / grad_accum_steps
+            # Compute ILSD Loss
+            loss_dict = compute_ilsd_loss(
+                eps_teacher=eps_teacher,
+                eps_student=eps_student,
+                noise=noise,
+                t=t,
+                num_timesteps=T,
+                lam=lam,
+            )
+            loss = loss_dict["loss_total"] / grad_accum_steps
 
-            # Backward pass (bfloat16 vs float16 scaler)
-            if use_bfloat16 or not use_amp:
-                loss.backward()
-                if (step_idx + 1) % grad_accum_steps == 0 or (step_idx + 1) == len(train_loader):
-                    optimizer.step()
-                    optimizer.zero_grad()
-                    ema.update(model)
-                    global_step += 1
-            else:
-                scaler.scale(loss).backward()
-                if (step_idx + 1) % grad_accum_steps == 0 or (step_idx + 1) == len(train_loader):
-                    scaler.step(optimizer)
-                    scaler.update()
-                    optimizer.zero_grad()
-                    ema.update(model)
-                    global_step += 1
+            accelerator.backward(loss)
+            
+            if (step_idx + 1) % grad_accum_steps == 0 or (step_idx + 1) == len(train_loader):
+                optimizer.step()
+                optimizer.zero_grad()
+                ema.update(accelerator.unwrap_model(model))
+                global_step += 1
 
             # Logging
             loss_val = loss.item() * grad_accum_steps
@@ -330,11 +317,12 @@ def train(
         if avg_epoch_loss < best_loss:
             best_loss = avg_epoch_loss
             best_ckpt_path = Path(output_dir) / "elt_sr_best.pt"
+            raw_model_state = accelerator.unwrap_model(model).state_dict()
             torch.save({
                 "epoch": epoch,
                 "global_step": global_step,
                 "best_loss": best_loss,
-                "model_state_dict": raw_model.state_dict(),
+                "model_state_dict": raw_model_state,
                 "ema_state_dict": ema.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
                 "scaler_state_dict": scaler.state_dict(),
@@ -344,11 +332,12 @@ def train(
         # Save checkpoint periodically (every 5 epochs)
         if (epoch + 1) % 5 == 0 or epoch == config.epochs - 1:
             ckpt_path = Path(output_dir) / f"elt_sr_ep{epoch+1}.pt"
+            raw_model_state = accelerator.unwrap_model(model).state_dict()
             torch.save({
                 "epoch": epoch,
                 "global_step": global_step,
                 "best_loss": best_loss,
-                "model_state_dict": raw_model.state_dict(),
+                "model_state_dict": raw_model_state,
                 "ema_state_dict": ema.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
                 "scaler_state_dict": scaler.state_dict(),
