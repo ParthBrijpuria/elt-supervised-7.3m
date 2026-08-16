@@ -157,14 +157,18 @@ def train(
     if resume_from and os.path.exists(resume_from):
         ckpt_path_to_load = Path(resume_from)
     elif auto_resume:
-        # Prefer best model checkpoint, fall back to latest epoch checkpoint
+        # Prefer the rolling latest checkpoint to avoid losing progress
+        latest_ckpt = Path(output_dir) / "elt_sr_latest.pt"
         best_ckpt = Path(output_dir) / "elt_sr_best.pt"
-        if best_ckpt.exists():
+        
+        if latest_ckpt.exists():
+            ckpt_path_to_load = latest_ckpt
+        elif best_ckpt.exists():
             ckpt_path_to_load = best_ckpt
         else:
-            latest_ckpt = find_latest_checkpoint(output_dir)
-            if latest_ckpt:
-                ckpt_path_to_load = latest_ckpt
+            fallback_ckpt = find_latest_checkpoint(output_dir)
+            if fallback_ckpt:
+                ckpt_path_to_load = fallback_ckpt
 
     if ckpt_path_to_load and os.path.exists(ckpt_path_to_load):
         print(f"Found checkpoint to resume from: {ckpt_path_to_load}")
@@ -336,6 +340,22 @@ def train(
             if os.path.exists("/kaggle/working/elt_cache"):
                 os.makedirs(cache_dir, exist_ok=True)
                 shutil.copy2(str(best_ckpt_path), f"{cache_dir}/elt_sr_best.pt")
+
+        # Save a rolling "latest" checkpoint every 5 epochs
+        if accelerator.is_main_process and (epoch + 1) % 5 == 0:
+            latest_ckpt_path = Path(output_dir) / "elt_sr_latest.pt"
+            raw_model_state = accelerator.unwrap_model(model).state_dict()
+            torch.save({
+                "epoch": epoch,
+                "global_step": global_step,
+                "best_loss": best_loss,
+                "model_state_dict": raw_model_state,
+                "ema_state_dict": ema.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+            }, latest_ckpt_path)
+            print(f"[*] Rolling checkpoint saved to {latest_ckpt_path}")
+            if os.path.exists("/kaggle/working/elt_cache"):
+                shutil.copy2(str(latest_ckpt_path), f"{cache_dir}/elt_sr_latest.pt")
 
         # Visual sampling on validation/train batch every 10 epochs (main process only)
         if accelerator.is_main_process and ((epoch + 1) % 10 == 0 or epoch == config.epochs - 1) and vae is not None:
