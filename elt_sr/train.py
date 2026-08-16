@@ -204,7 +204,7 @@ def train(
 
     # 5. Setup Data
     latent_file = kwargs.get("latent_file", "latents_ffhq_128.pt")
-    if not os.path.exists(latent_file):
+    if not getattr(config, "use_vae", False) or not os.path.exists(latent_file):
         latent_file = None
 
     max_train_images = kwargs.get("max_train_images", None)

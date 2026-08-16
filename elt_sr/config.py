@@ -8,12 +8,12 @@ class ELTConfig:
     """Configuration for the ELT-SR system."""
     
     # --- Model Architecture ---
-    use_vae: bool = True
-    img_size: int = 128       # Pixel image size (128 -> 16x16 latents with f=8 VAE)
-    latent_size: int = 16     # Latent dimension (img_size // 8)
-    patch_size: int = 1       # UPDATED: 16/1 = 16x16 grid = 256 tokens (crucial for spatial fidelity)
-    in_channels: int = 4      # VAE latent channels
-    cond_channels: int = 4    # VAE latent channels for conditioning
+    use_vae: bool = True      # UPDATED: Operating in latent space
+    img_size: int = 256       # UPDATED: Target HR pixel size (256 -> 32x32 latents)
+    latent_size: int = 32     # Latent dimension (img_size // 8)
+    patch_size: int = 2       # UPDATED: 32/2 = 16x16 grid = 256 tokens
+    in_channels: int = 4      # UPDATED: VAE latent channels
+    cond_channels: int = 4    # UPDATED: VAE latent channels for conditioning
     hidden_dim: int = 256     # 7.3M ELT scale
     num_heads: int = 4        # 7.3M ELT scale
     mlp_dim: int = 1024       # 7.3M ELT scale
@@ -36,7 +36,7 @@ class ELTConfig:
     grad_accum_steps: int = 1  # Gradient accumulation steps
     
     # --- Data Pipeline ---
-    scale: int = 8            # UPDATED: 128 / 16 = 8x Super-resolution scale factor
+    scale: int = 2            # UPDATED: 32 / 16 = 2x Super-resolution scale factor
     val_split_size: int = 2000# Validation split size from dataset
 
     

@@ -27,6 +27,15 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    gpu_kwargs = {}
+    if args.gpu_config:
+        try:
+            with open(args.gpu_config, 'r') as f:
+                gpu_kwargs = json.load(f)
+            print(f"Loaded GPU config from {args.gpu_config}: {gpu_kwargs}")
+        except Exception as e:
+            print(f"Failed to load gpu_config: {e}")
+
     train(
         config_path=args.config,
         train_dir=args.train_dir,
