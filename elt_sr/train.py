@@ -337,25 +337,6 @@ def train(
                 os.makedirs(cache_dir, exist_ok=True)
                 shutil.copy2(str(best_ckpt_path), f"{cache_dir}/elt_sr_best.pt")
 
-        # Save checkpoint periodically (every 5 epochs)
-        if (epoch + 1) % 5 == 0 or epoch == config.epochs - 1:
-            ckpt_path = Path(output_dir) / f"elt_sr_ep{epoch+1}.pt"
-            raw_model_state = accelerator.unwrap_model(model).state_dict()
-            torch.save({
-                "epoch": epoch,
-                "global_step": global_step,
-                "best_loss": best_loss,
-                "model_state_dict": raw_model_state,
-                "ema_state_dict": ema.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-            }, ckpt_path)
-            print(f"Saved checkpoint to {ckpt_path}")
-            # Auto-backup to persistent cache
-            cache_dir = "/kaggle/working/elt_cache/checkpoints"
-            if os.path.exists("/kaggle/working/elt_cache"):
-                os.makedirs(cache_dir, exist_ok=True)
-                shutil.copy2(str(ckpt_path), f"{cache_dir}/{ckpt_path.name}")
-
         # Visual sampling on validation/train batch every 10 epochs (main process only)
         if accelerator.is_main_process and ((epoch + 1) % 10 == 0 or epoch == config.epochs - 1) and vae is not None:
             unwrapped_model = accelerator.unwrap_model(model)
