@@ -12,6 +12,7 @@ Main training loop implementing:
 """
 
 import os
+import shutil
 import torch
 import torch.nn.functional as F
 from typing import Optional
@@ -325,6 +326,11 @@ def train(
                 "optimizer_state_dict": optimizer.state_dict(),
             }, best_ckpt_path)
             print(f"[*] New best model saved to {best_ckpt_path} with loss: {best_loss:.4f}!")
+            # Auto-backup to persistent cache
+            cache_dir = "/kaggle/working/elt_cache/checkpoints"
+            if os.path.exists("/kaggle/working/elt_cache"):
+                os.makedirs(cache_dir, exist_ok=True)
+                shutil.copy2(str(best_ckpt_path), f"{cache_dir}/elt_sr_best.pt")
 
         # Save checkpoint periodically (every 5 epochs)
         if (epoch + 1) % 5 == 0 or epoch == config.epochs - 1:
@@ -339,6 +345,11 @@ def train(
                 "optimizer_state_dict": optimizer.state_dict(),
             }, ckpt_path)
             print(f"Saved checkpoint to {ckpt_path}")
+            # Auto-backup to persistent cache
+            cache_dir = "/kaggle/working/elt_cache/checkpoints"
+            if os.path.exists("/kaggle/working/elt_cache"):
+                os.makedirs(cache_dir, exist_ok=True)
+                shutil.copy2(str(ckpt_path), f"{cache_dir}/{ckpt_path.name}")
 
         # Visual sampling on validation/train batch every 10 epochs
         if ((epoch + 1) % 10 == 0 or epoch == config.epochs - 1) and vae is not None:
