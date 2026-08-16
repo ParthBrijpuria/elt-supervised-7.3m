@@ -358,6 +358,15 @@ def train(
                 cache_dir = "/kaggle/working/elt_cache/checkpoints"
                 os.makedirs(cache_dir, exist_ok=True)
                 shutil.copy2(str(latest_ckpt_path), f"{cache_dir}/elt_sr_latest.pt")
+                
+            # Keep a persistent milestone checkpoint every 50 epochs
+            if (epoch + 1) % 50 == 0:
+                milestone_name = f"elt_sr_ep{epoch + 1}.pt"
+                milestone_ckpt_path = Path(output_dir) / milestone_name
+                shutil.copy2(str(latest_ckpt_path), str(milestone_ckpt_path))
+                print(f"[*] Milestone checkpoint saved to {milestone_ckpt_path}")
+                if os.path.exists("/kaggle/working/elt_cache"):
+                    shutil.copy2(str(milestone_ckpt_path), f"{cache_dir}/{milestone_name}")
 
         # Visual sampling on validation/train batch every 10 epochs (main process only)
         if accelerator.is_main_process and ((epoch + 1) % 10 == 0 or epoch == config.epochs - 1) and vae is not None:
