@@ -22,6 +22,11 @@ class EMA:
         for param in self.ema_model.parameters():
             param.requires_grad = False
 
+    def to(self, device):
+        """Move EMA model to device."""
+        self.ema_model.to(device)
+        return self
+
     @torch.no_grad()
     def update(self, model: nn.Module):
         """Update EMA parameters using the current model."""

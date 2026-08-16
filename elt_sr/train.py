@@ -132,7 +132,7 @@ def train(
 
     # 2. Setup Model & Optimizers
     raw_model = create_elt_sr(config)
-    ema = EMA(raw_model, decay=config.ema_decay)
+    ema = EMA(raw_model, decay=config.ema_decay).to(device)
     optimizer = AdamW(raw_model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
 
     # Enable PyTorch 2.0 torch.compile for H100 kernel fusion (2x-3x speedup!)
