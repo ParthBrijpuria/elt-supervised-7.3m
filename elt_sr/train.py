@@ -157,9 +157,14 @@ def train(
     if resume_from and os.path.exists(resume_from):
         ckpt_path_to_load = Path(resume_from)
     elif auto_resume:
-        latest_ckpt = find_latest_checkpoint(output_dir)
-        if latest_ckpt:
-            ckpt_path_to_load = latest_ckpt
+        # Prefer best model checkpoint, fall back to latest epoch checkpoint
+        best_ckpt = Path(output_dir) / "elt_sr_best.pt"
+        if best_ckpt.exists():
+            ckpt_path_to_load = best_ckpt
+        else:
+            latest_ckpt = find_latest_checkpoint(output_dir)
+            if latest_ckpt:
+                ckpt_path_to_load = latest_ckpt
 
     if ckpt_path_to_load and os.path.exists(ckpt_path_to_load):
         print(f"Found checkpoint to resume from: {ckpt_path_to_load}")
