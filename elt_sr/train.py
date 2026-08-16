@@ -270,7 +270,7 @@ def train(
             )
 
             # S³: Sample random intermediate student loop (L_int)
-            l_int = torch.randint(1, raw_model.max_loops, (1,)).item()
+            l_int = torch.randint(1, config.max_loops, (1,)).item()
             
             # Compute current λ for curriculum
             lam = get_lambda(global_step, max(1, total_steps))
