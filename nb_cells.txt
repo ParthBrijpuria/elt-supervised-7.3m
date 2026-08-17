@@ -1,0 +1,272 @@
+!pip install torch torchvision diffusers accelerate tqdm pillow kagglehub
+--- NEW CELL ---
+!cp /kaggle/input/datasets/wittyheisen/elt-sr-best /kaggle/working/elt-supervised-7.3m/checkpoints
+--- NEW CELL ---
+!cp /kaggle/input/datasets/wittyheisen/elt-sr-best /kaggle/working/elt_cache/checkpoints
+--- NEW CELL ---
+import os, shutil, glob
+
+if os.path.exists('/kaggle/working'):
+    os.chdir('/kaggle/working')
+
+CACHE_DIR = '/kaggle/working/elt_cache'
+REPO_DIR  = '/kaggle/working/elt-supervised-7.3m'
+
+os.makedirs(CACHE_DIR, exist_ok=True)
+os.makedirs(f'{CACHE_DIR}/checkpoints', exist_ok=True)
+
+# ── STEP 1: Backup checkpoints & latents BEFORE deleting repo ──
+if os.path.exists(f'{REPO_DIR}/checkpoints'):
+    for f in glob.glob(f'{REPO_DIR}/checkpoints/*.pt'):
+        dst = f'{CACHE_DIR}/checkpoints/{os.path.basename(f)}'
+        print(f'  Backing up {os.path.basename(f)} -> cache')
+        shutil.copy2(f, dst)
+
+if os.path.exists(f'{REPO_DIR}/latents_ffhq_128.pt'):
+    print('  Backing up latents_ffhq_128.pt -> cache')
+    shutil.copy2(f'{REPO_DIR}/latents_ffhq_128.pt', f'{CACHE_DIR}/latents_ffhq_128.pt')
+
+# ── STEP 2: Fresh clone ──
+!rm -rf elt-supervised-7.3m
+!git clone https://github.com/ParthBrijpuria/elt-supervised-7.3m.git
+%cd elt-supervised-7.3m
+
+# ── STEP 3: Restore from cache (same session) ──
+os.makedirs('checkpoints', exist_ok=True)
+for f in glob.glob(f'{CACHE_DIR}/checkpoints/*.pt'):
+    dst = f'checkpoints/{os.path.basename(f)}'
+    if not os.path.exists(dst):
+        print(f'  Restoring {os.path.basename(f)} from cache')
+        shutil.copy2(f, dst)
+
+if os.path.exists(f'{CACHE_DIR}/latents_ffhq_128.pt') and not os.path.exists('latents_ffhq_128.pt'):
+    print('  Restoring latents_ffhq_128.pt from cache')
+    shutil.copy2(f'{CACHE_DIR}/latents_ffhq_128.pt', 'latents_ffhq_128.pt')
+
+# ── STEP 4: Restore from /kaggle/input/ (cross-session, if attached as dataset) ──
+for input_dir in glob.glob('/kaggle/input/*/checkpoints'):
+    for f in glob.glob(f'{input_dir}/*.pt'):
+        dst = f'checkpoints/{os.path.basename(f)}'
+        if not os.path.exists(dst):
+            print(f'  Restoring {os.path.basename(f)} from /kaggle/input/')
+            shutil.copy2(f, dst)
+
+for input_dir in glob.glob('/kaggle/input/*'):
+    src = f'{input_dir}/latents_ffhq_128.pt'
+    if os.path.exists(src) and not os.path.exists('latents_ffhq_128.pt'):
+        print('  Restoring latents_ffhq_128.pt from /kaggle/input/')
+        shutil.copy2(src, 'latents_ffhq_128.pt')
+
+# ── Summary ──
+existing_ckpts = glob.glob('checkpoints/*.pt')
+has_latents = os.path.exists('latents_ffhq_128.pt')
+print(f'\n✅ Ready! Checkpoints found: {len(existing_ckpts)}, Latent file: {"YES" if has_latents else "NO"}')
+--- NEW CELL ---
+import kagglehub
+
+# Download latest version
+path = kagglehub.dataset_download("greatgamedota/ffhq-face-data-set")
+
+print("Path to dataset files:", path)
+--- NEW CELL ---
+import os
+if not os.path.exists('latents_ffhq_128.pt'):
+    !python preprocess_latents.py --train_dir $path --output latents_ffhq_128.pt --batch_size 128
+    # Backup to cache immediately
+    import shutil
+    shutil.copy2('latents_ffhq_128.pt', '/kaggle/working/elt_cache/latents_ffhq_128.pt')
+    print('Backed up latents to cache.')
+else:
+    print('latents_ffhq_128.pt already exists, skipping preprocessing.')
+--- NEW CELL ---
+import shutil, os, glob
+
+# Find elt_sr_best.pt anywhere in /kaggle/input/
+for f in glob.glob("/kaggle/input/**/elt_sr_best.pt", recursive=True):
+    os.makedirs("checkpoints", exist_ok=True)
+    shutil.copy2(f, "checkpoints/elt_sr_best.pt")
+    print(f"Copied {f} -> checkpoints/elt_sr_best.pt")
+    break
+else:
+    print("elt_sr_best.pt not found in /kaggle/input/. Upload it as a Kaggle dataset first.")
+
+--- NEW CELL ---
+import glob, torch
+
+print("--- Searching for Checkpoints ---")
+all_files = glob.glob("/kaggle/**/*.pt", recursive=True)
+found = False
+
+for f in all_files:
+    if "elt_sr_" in f or "best" in f:
+        try:
+            ckpt = torch.load(f, map_location="cpu")
+            ep = ckpt.get("epoch", "Unknown")
+            print(f"File: {f}")
+            print(f"  -> Saved at Epoch: {ep}")
+            found = True
+        except:
+            pass
+
+if not found:
+    print("No checkpoints found anywhere!")
+
+--- NEW CELL ---
+!accelerate launch --num_processes 2 run_train.py \
+    --train_dir $path \
+    --img_size 64 \
+    --scale 4 \
+    --output_dir checkpoints_64 \
+    --epochs 1000 \
+    --batch_size 64
+
+--- NEW CELL ---
+import shutil, glob, os
+os.makedirs('/kaggle/working/elt_cache/checkpoints', exist_ok=True)
+for f in glob.glob('checkpoints/*.pt'):
+    shutil.copy2(f, f'/kaggle/working/elt_cache/checkpoints/{os.path.basename(f)}')
+    print(f'Backed up {os.path.basename(f)}')
+print('Done! Checkpoints are safe in /kaggle/working/elt_cache/')
+--- NEW CELL ---
+from IPython.display import display, Image
+import glob
+
+for img in sorted(glob.glob("checkpoints/samples/*.png")):
+    print(img)
+    display(Image(filename=img, width=250))
+
+--- NEW CELL ---
+import torch
+import matplotlib.pyplot as plt
+from torchvision.utils import make_grid
+from torch.utils.data import DataLoader
+from pathlib import Path
+import random
+
+# Import our custom modules
+from elt_sr.config import ELTConfig
+from elt_sr.model import create_elt_sr
+from elt_sr.vae import VAEWrapper
+from elt_sr.diffusion import shifted_cosine_schedule, ddim_sample_loop
+from elt_sr.data import PreencodedLatentDataset
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Running inference on {device}...")
+
+# 1. Load Model & VAE
+config = ELTConfig()
+model = create_elt_sr(config).to(device)
+vae = VAEWrapper(device=device)
+
+ckpt_path = "checkpoints/elt_sr_best.pt"
+if not Path(ckpt_path).exists():
+    print(f"Error: {ckpt_path} not found!")
+else:
+    ckpt = torch.load(ckpt_path, map_location=device)
+    
+    # --- FIX: Load EMA weights instead of raw training weights! ---
+    if "ema_state_dict" in ckpt:
+        m_state = {k.replace("_orig_mod.", ""): v for k, v in ckpt["ema_state_dict"].items()}
+        print("Loaded EMA model weights successfully! (Expect much better quality)")
+    else:
+        m_state = {k.replace("_orig_mod.", ""): v for k, v in ckpt["model_state_dict"].items()}
+        print("Warning: EMA weights not found, using raw model weights.")
+        
+    model.load_state_dict(m_state)
+    model.eval()
+
+    # 2. Get Data (using your cached latents for speed)
+    latent_path = "/kaggle/working/elt_cache/latents_ffhq_128.pt"
+    dataset = PreencodedLatentDataset(latent_path)
+    
+    # Pick 10 random indices
+    indices = random.sample(range(len(dataset)), 10)
+    
+    z_bases = []
+    z_hqs_real = []
+    for idx in indices:
+        sample = dataset[idx]
+        z_bases.append(sample["z_base"])
+        z_hqs_real.append(sample["z_hq"])
+        
+    z_base = torch.stack(z_bases).to(device)
+    
+    # 3. Run Inference
+    print("Running diffusion generation...")
+    T = config.num_timesteps
+    schedule = shifted_cosine_schedule(num_timesteps=T, shift=config.schedule_shift, cosine_s=config.schedule_cosine_s)
+    
+    with torch.no_grad():
+        # Denoise using DDIM
+        z_pred_hq = ddim_sample_loop(
+            model, z_base, schedule, 
+            ddim_steps=50, 
+            num_loops=config.max_loops, 
+            device=device, 
+            verbose=False
+        )
+        
+        # Decode back to pixel space
+        img_base = vae.decode(z_base).cpu()         # Before (Bicubic LQ)
+        img_pred = vae.decode(z_pred_hq).cpu()      # After (Model HQ)
+
+    # 4. Visualization
+    fig, axes = plt.subplots(10, 2, figsize=(2,10))
+    fig.suptitle("ELT-SR: Before (32x32 Bicubic) vs After (Model)", fontsize=16, y=0.92)
+    
+    for i in range(10):
+        # Before
+        axes[i, 0].imshow(img_base[i].permute(1, 2, 0).clamp(0, 1).numpy())
+        axes[i, 0].axis("off")
+        if i == 0: axes[i, 0].set_title("Before (LQ)")
+            
+        # After
+        axes[i, 1].imshow(img_pred[i].permute(1, 2, 0).clamp(0, 1).numpy())
+        axes[i, 1].axis("off")
+        if i == 0: axes[i, 1].set_title("After (Generated HQ)")
+            
+    plt.tight_layout()
+    plt.show()
+
+--- NEW CELL ---
+%ls /kaggle/working/elt-supervised-7.3m/checkpoints_64/
+--- NEW CELL ---
+from IPython.display import Image, display
+
+# Path to your target image
+img_path = '/kaggle/working/elt-supervised-7.3m/checkpoints_64/samples/ep300_sample.png'
+
+display(Image(filename=img_path))
+--- NEW CELL ---
+import shutil, os, glob
+
+# Search for the file anywhere in the input folder
+found_files = glob.glob("/kaggle/input/**/elt_sr_best.pt", recursive=True)
+
+if found_files:
+    target_dir = "/kaggle/working/elt-supervised-7.3m/checkpoints"
+    os.makedirs(target_dir, exist_ok=True)
+    
+    source_file = found_files[0]
+    dest_file = f"{target_dir}/elt_sr_best.pt"
+    
+    shutil.copy2(source_file, dest_file)
+    print(f"Success! Copied from {source_file} to {dest_file}")
+else:
+    print("Error: elt_sr_best.pt not found anywhere in /kaggle/input/.")
+
+--- NEW CELL ---
+import shutil
+shutil.copy2("/kaggle/working/elt-supervised-7.3m/checkpoints_64/elt_sr_best.pt", "/kaggle/working/elt_sr_best.pt")
+print("Done! Now click 'Save Version' → the file will appear in your notebook Output tab for download.")
+
+--- NEW CELL ---
+!pip install torchmetrics[image]
+
+--- NEW CELL ---
+!python run_eval.py \
+    --val_dir /kaggle/input/datasets/greatgamedota/ffhq-face-data-set/thumbnails128x128 \
+    --checkpoint checkpoints/elt_sr_best.pt \
+    --batch_size 16 \
+    --ddim_steps 50 
+--- NEW CELL ---
