@@ -119,24 +119,26 @@ def evaluate_model(args):
         i_hq = batch["i_hq"].to(device)
         i_base = batch["i_base"].to(device)
         
-        # Encode LQ image to latents
-        z_base = vae.encode(i_base)
+        # Use Automatic Mixed Precision (FP16) for a massive speedup!
+        with torch.autocast("cuda", dtype=torch.float16):
+            # Encode LQ image to latents
+            z_base = vae.encode(i_base)
+            
+            # Run diffusion
+            z_pred_hq = ddim_sample_loop(
+                model=model,
+                i_base=z_base,
+                schedule=schedule,
+                ddim_steps=args.ddim_steps,
+                num_loops=config.max_loops,
+                device=device,
+                verbose=False
+            )
+            
+            # Decode predicted latents back to image space
+            img_pred = vae.decode(z_pred_hq)
         
-        # Run diffusion
-        z_pred_hq = ddim_sample_loop(
-            model=model,
-            i_base=z_base,
-            schedule=schedule,
-            ddim_steps=args.ddim_steps,
-            num_loops=config.max_loops,
-            device=device,
-            verbose=False
-        )
-        
-        # Decode predicted latents back to image space
-        img_pred = vae.decode(z_pred_hq)
-        
-        # Update metrics
+        # Update metrics (Metrics should ideally run in fp32 for stability)
         scorekeeper.update(preds=img_pred, target=i_hq)
         
         # Update progress bar occasionally
