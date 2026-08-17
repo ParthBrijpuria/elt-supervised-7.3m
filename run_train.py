@@ -14,6 +14,8 @@ if __name__ == "__main__":
     parser.add_argument("--train_dir", type=str, default="thumbnails128x128", help="Path to HQ images folder")
     parser.add_argument("--val_dir", type=str, default=None, help="Path to val images folder (optional)")
     parser.add_argument("--config", type=str, default=None, help="Path to custom config JSON (optional)")
+    parser.add_argument("--img_size", type=int, default=None, help="Override target HR pixel size (e.g., 32, 64)")
+    parser.add_argument("--scale", type=int, default=None, help="Override super-resolution scale (e.g., 2, 4)")
     parser.add_argument("--epochs", type=int, default=None, help="Override number of epochs")
     parser.add_argument("--batch_size", type=int, default=None, help="Override batch size")
     parser.add_argument("--lr", type=float, default=None, help="Override learning rate")
@@ -46,6 +48,8 @@ if __name__ == "__main__":
         epochs=args.epochs,
         batch_size=args.batch_size,
         lr=args.lr,
+        img_size=args.img_size,
+        scale=args.scale,
         bfloat16=gpu_kwargs.get("use_bfloat16", args.bfloat16),
         compile=gpu_kwargs.get("use_compile", args.compile),
         max_train_images=args.max_train_images,

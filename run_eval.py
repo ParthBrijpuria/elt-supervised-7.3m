@@ -60,6 +60,11 @@ def evaluate_model(args):
     
     # 1. Load Config & Model
     config = ELTConfig()
+    if args.img_size is not None:
+        config.img_size = args.img_size
+    if args.scale is not None:
+        config.scale = args.scale
+        
     model = create_elt_sr(config).to(device)
     vae = VAEWrapper(device=device)
 
@@ -169,6 +174,8 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=16, help="Evaluation batch size")
     parser.add_argument("--ddim_steps", type=int, default=50, help="Number of DDIM sampling steps")
     parser.add_argument("--max_batches", type=int, default=None, help="Limit evaluation to N batches (for quick testing)")
+    parser.add_argument("--img_size", type=int, default=None, help="Override target HR pixel size (e.g., 32, 64)")
+    parser.add_argument("--scale", type=int, default=None, help="Override super-resolution scale (e.g., 2, 4)")
     
     args = parser.parse_args()
     evaluate_model(args)
