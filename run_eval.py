@@ -83,7 +83,7 @@ def evaluate_model(args):
     # 2. Setup Data
     print(f"Loading validation images from {args.val_dir}...")
     dataset = SRDataset(
-        img_dir=args.val_dir,
+        root_dir=args.val_dir,
         hq_size=config.img_size * 8, # 32 * 8 = 256 for VAE decoding if using larger, but ours is 128
         scale=config.scale,
         augment=False
