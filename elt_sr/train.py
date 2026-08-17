@@ -392,8 +392,9 @@ def train(
                         actual_n = 0
 
                     if actual_n > 0:
+                        # MUST use EMA model for sampling! Raw weights are too noisy.
                         z_pred_hq = ddim_sample_loop(
-                            unwrapped_model, z_base_val, schedule, ddim_steps=50, num_loops=config.max_loops, device=device, verbose=False
+                            ema.ema_model, z_base_val, schedule, ddim_steps=50, num_loops=config.max_loops, device=device, verbose=False
                         )
                         img_pred = vae.decode(z_pred_hq)
 
