@@ -81,15 +81,12 @@ def evaluate_model(args):
     model.eval()
     
     # 2. Setup Data
-    print(f"Loading validation images from {args.val_dir}...")
     dataset = SRDataset(
         root_dir=args.val_dir,
-        hq_size=config.img_size * 8, # 32 * 8 = 256 for VAE decoding if using larger, but ours is 128
+        hq_size=config.img_size, # Must be exactly 32 so latents are 4x4
         scale=config.scale,
         augment=False
     )
-    # Actually, we need to enforce 128x128 for our specific pipeline
-    dataset.hq_size = 128 
     
     dataloader = DataLoader(
         dataset, 
