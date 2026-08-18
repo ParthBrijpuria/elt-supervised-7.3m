@@ -8,17 +8,17 @@ class ELTConfig:
     """Configuration for the ELT-SR system."""
     
     # --- Model Architecture ---
-    use_vae: bool = True      # UPDATED: Operating in latent space
-    img_size: int = 32        # UPDATED: Target HR pixel size (32 -> 4x4 latents)
-    latent_size: int = 4      # Latent dimension (img_size // 8)
-    patch_size: int = 2       # UPDATED: 4/2 = 2x2 grid = 4 tokens
-    in_channels: int = 4      # UPDATED: VAE latent channels
-    cond_channels: int = 4    # UPDATED: VAE latent channels for conditioning
-    hidden_dim: int = 256     # 7.3M ELT scale
-    num_heads: int = 4        # 7.3M ELT scale
-    mlp_dim: int = 1024       # 7.3M ELT scale
+    use_vae: bool = True
+    img_size: int = 128       # Pixel image size (128 -> 16x16 latents with f=8 VAE)
+    latent_size: int = 16     # Latent dimension (img_size // 8)
+    patch_size: int = 1       # UPDATED: 16/1 = 16x16 grid = 256 tokens (crucial for spatial fidelity)
+    in_channels: int = 4      # VAE latent channels
+    cond_channels: int = 4    # VAE latent channels for conditioning
+    hidden_dim: int = 256     # UPDATED: Scaled down to 7.3M params
+    num_heads: int = 4        # UPDATED: 64-dim per head
+    mlp_dim: int = 1024       # UPDATED: 4x hidden_dim
     num_blocks: int = 6       # N: Number of unique transformer blocks
-    max_loops: int = 3        # 7.3M ELT scale
+    max_loops: int = 3        # UPDATED: L_max: Maximum loop count for teacher
     min_loops: int = 1        # L_min: Minimum loop count for student
     
     # --- Diffusion ---
@@ -36,7 +36,7 @@ class ELTConfig:
     grad_accum_steps: int = 1  # Gradient accumulation steps
     
     # --- Data Pipeline ---
-    scale: int = 2            # UPDATED: 32 / 16 = 2x Super-resolution scale factor
+    scale: int = 8            # UPDATED: 128 / 16 = 8x Super-resolution scale factor
     val_split_size: int = 2000# Validation split size from dataset
 
     
