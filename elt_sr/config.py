@@ -11,7 +11,7 @@ class ELTConfig:
     use_vae: bool = True
     img_size: int = 128       # Pixel image size (128 -> 16x16 latents with f=8 VAE)
     latent_size: int = 16     # Latent dimension (img_size // 8)
-    patch_size: int = 1       # UPDATED: 16/1 = 16x16 grid = 256 tokens (crucial for spatial fidelity)
+    patch_size: int = 2       # UPDATED: Set to 2 to match old checkpoint shapes
     in_channels: int = 4      # VAE latent channels
     cond_channels: int = 4    # VAE latent channels for conditioning
     hidden_dim: int = 256     # UPDATED: Scaled down to 7.3M params

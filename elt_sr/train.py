@@ -182,13 +182,28 @@ def train(
             m_state = ckpt["model_state_dict"]
             # Clean _orig_mod. prefix if present
             m_state = {k.replace("_orig_mod.", ""): v for k, v in m_state.items()}
-            raw_model.load_state_dict(m_state)
+            
+            # Handle pos_embed shape mismatches gracefully (e.g. changing resolutions)
+            if 'pos_embed' in m_state:
+                if m_state['pos_embed'].shape != raw_model.pos_embed.shape:
+                    print(f"Ignoring pos_embed from checkpoint due to shape mismatch: {m_state['pos_embed'].shape} vs {raw_model.pos_embed.shape}")
+                    del m_state['pos_embed']
+            
+            raw_model.load_state_dict(m_state, strict=False)
 
         if "ema_state_dict" in ckpt:
             ema_state = ckpt["ema_state_dict"]
             # Clean _orig_mod. prefix if present
             ema_state = {k.replace("_orig_mod.", ""): v for k, v in ema_state.items()}
-            ema.load_state_dict(ema_state)
+            
+            # Handle pos_embed shape mismatches for EMA
+            if 'pos_embed' in ema_state:
+                # The ema object wraps the model, so we need to check if the shapes match
+                if ema_state['pos_embed'].shape != raw_model.pos_embed.shape:
+                    print(f"Ignoring EMA pos_embed from checkpoint due to shape mismatch: {ema_state['pos_embed'].shape} vs {raw_model.pos_embed.shape}")
+                    del ema_state['pos_embed']
+                    
+            ema.load_state_dict(ema_state, strict=False)
 
         if "optimizer_state_dict" in ckpt:
             optimizer.load_state_dict(ckpt["optimizer_state_dict"])

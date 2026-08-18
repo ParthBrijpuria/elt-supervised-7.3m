@@ -40,6 +40,6 @@ class EMA:
         """Return the state dict of the EMA model."""
         return self.ema_model.state_dict()
 
-    def load_state_dict(self, state_dict):
+    def load_state_dict(self, state_dict, **kwargs):
         """Load state dict into the EMA model."""
-        self.ema_model.load_state_dict(state_dict)
+        self.ema_model.load_state_dict(state_dict, **kwargs)
