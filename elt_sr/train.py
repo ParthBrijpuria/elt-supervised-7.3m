@@ -108,6 +108,10 @@ def train(
         if hasattr(config, k) and v is not None:
             setattr(config, k, v)
             
+    # Dynamically update latent_size if img_size was overridden
+    if getattr(config, "use_vae", False):
+        config.latent_size = config.img_size // 8
+
     os.makedirs(output_dir, exist_ok=True)
     samples_dir = Path(output_dir) / "samples"
     os.makedirs(samples_dir, exist_ok=True)
