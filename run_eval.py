@@ -66,7 +66,9 @@ def evaluate_model(args):
         config.scale = args.scale
         
     model = create_elt_sr(config).to(device)
-    vae = VAEWrapper(device=device)
+    vae = None
+    if getattr(config, "use_vae", False):
+        vae = VAEWrapper(device=device)
 
     if not os.path.exists(args.checkpoint):
         raise FileNotFoundError(f"Checkpoint not found at {args.checkpoint}")
@@ -88,7 +90,8 @@ def evaluate_model(args):
     # 2. Setup Data
     dataset = SRDataset(
         root_dir=args.val_dir,
-        hq_size=config.img_size, # Must be exactly 32 so latents are 4x4
+        hq_size=config.img_size,
+
         scale=config.scale,
         augment=False
     )
@@ -124,23 +127,38 @@ def evaluate_model(args):
         i_hq = batch["i_hq"].to(device)
         i_base = batch["i_base"].to(device)
         
-        # Encode LQ image to latents (VAE in fp32 to avoid NaNs)
-        z_base = vae.encode(i_base)
-        
-        # Run diffusion in Mixed Precision (FP16) for speed
-        with torch.autocast("cuda", dtype=torch.float16):
-            z_pred_hq = ddim_sample_loop(
-                model=model,
-                i_base=z_base,
-                schedule=schedule,
-                ddim_steps=args.ddim_steps,
-                num_loops=config.max_loops,
-                device=device,
-                verbose=False
-            )
+        if vae is not None:
+            # Encode LQ image to latents (VAE in fp32 to avoid NaNs)
+            z_base = vae.encode(i_base)
             
-        # Decode predicted latents back to image space (VAE in fp32 to avoid NaNs)
-        img_pred = vae.decode(z_pred_hq.float())
+            # Run diffusion in Mixed Precision (FP16) for speed
+            with torch.autocast("cuda", dtype=torch.float16):
+                z_pred_hq = ddim_sample_loop(
+                    model=model,
+                    i_base=z_base,
+                    schedule=schedule,
+                    ddim_steps=args.ddim_steps,
+                    num_loops=config.max_loops,
+                    device=device,
+                    verbose=False
+                )
+                
+            # Decode predicted latents back to image space (VAE in fp32 to avoid NaNs)
+            img_pred = vae.decode(z_pred_hq.float())
+        else:
+            # Pixel-space residual diffusion
+            with torch.autocast("cuda", dtype=torch.float16):
+                r_pred = ddim_sample_loop(
+                    model=model,
+                    i_base=i_base,
+                    schedule=schedule,
+                    ddim_steps=args.ddim_steps,
+                    num_loops=config.max_loops,
+                    device=device,
+                    verbose=False
+                )
+            # Reconstruct: I_HQ = I_LQ + R
+            img_pred = torch.clamp(i_base + r_pred.float(), 0.0, 1.0)
         
         # Update metrics
         scorekeeper.update(preds=img_pred, target=i_hq)

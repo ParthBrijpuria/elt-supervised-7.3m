@@ -8,12 +8,12 @@ class ELTConfig:
     """Configuration for the ELT-SR system."""
     
     # --- Model Architecture ---
-    use_vae: bool = True      # UPDATED: Operating in latent space
-    img_size: int = 32        # UPDATED: Target HR pixel size (32 -> 4x4 latents)
-    latent_size: int = 4      # Latent dimension (img_size // 8)
-    patch_size: int = 2       # UPDATED: 4/2 = 2x2 grid = 4 tokens
-    in_channels: int = 4      # UPDATED: VAE latent channels
-    cond_channels: int = 4    # UPDATED: VAE latent channels for conditioning
+    use_vae: bool = False      # Switch to pixel space
+    img_size: int = 64         # Target HR pixel size
+    latent_size: int = 4       # Unused in pixel space
+    patch_size: int = 4        # 64/4 = 16x16 grid = 256 tokens
+    in_channels: int = 3       # RGB residual channels
+    cond_channels: int = 3     # RGB conditioning channels
     hidden_dim: int = 256     # 7.3M ELT scale
     num_heads: int = 4        # 7.3M ELT scale
     mlp_dim: int = 1024       # 7.3M ELT scale

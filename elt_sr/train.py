@@ -369,7 +369,7 @@ def train(
                     shutil.copy2(str(milestone_ckpt_path), f"{cache_dir}/{milestone_name}")
 
         # Visual sampling on validation/train batch every 10 epochs (main process only)
-        if accelerator.is_main_process and ((epoch + 1) % 10 == 0 or epoch == config.epochs - 1) and vae is not None:
+        if accelerator.is_main_process and ((epoch + 1) % 10 == 0 or epoch == config.epochs - 1):
             unwrapped_model = accelerator.unwrap_model(model)
             unwrapped_model.eval()
             eval_loader = val_loader if val_loader is not None else train_loader
@@ -378,26 +378,36 @@ def train(
                 num_samples = 5
                 
                 with torch.no_grad():
-                    if "z_base" in val_batch:
-                        # Pre-encoded latents mode
-                        z_base_val = val_batch["z_base"][:num_samples].to(device)
-                        actual_n = z_base_val.shape[0]
-                        val_base = vae.decode(z_base_val)
-                    elif "i_base" in val_batch:
-                        # Image mode
+                    if vae is not None:
+                        # Latent Space Visual Sampling
+                        if "z_base" in val_batch:
+                            z_base_val = val_batch["z_base"][:num_samples].to(device)
+                            actual_n = z_base_val.shape[0]
+                            val_base = vae.decode(z_base_val)
+                        elif "i_base" in val_batch:
+                            val_base = val_batch["i_base"][:num_samples].to(device)
+                            actual_n = val_base.shape[0]
+                            z_base_val = vae.encode(val_base)
+                        else:
+                            actual_n = 0
+
+                        if actual_n > 0:
+                            z_pred_hq = ddim_sample_loop(
+                                ema.ema_model, z_base_val, schedule, ddim_steps=50, num_loops=config.max_loops, device=device, verbose=False
+                            )
+                            img_pred = vae.decode(z_pred_hq)
+                    else:
+                        # Pixel Space Residual Sampling
                         val_base = val_batch["i_base"][:num_samples].to(device)
                         actual_n = val_base.shape[0]
-                        z_base_val = vae.encode(val_base)
-                    else:
-                        actual_n = 0
+                        if actual_n > 0:
+                            r_pred = ddim_sample_loop(
+                                ema.ema_model, val_base, schedule, ddim_steps=50, num_loops=config.max_loops, device=device, verbose=False
+                            )
+                            # Reconstruct: I_HQ = I_LQ + R
+                            img_pred = torch.clamp(val_base + r_pred, 0.0, 1.0)
 
                     if actual_n > 0:
-                        # MUST use EMA model for sampling! Raw weights are too noisy.
-                        z_pred_hq = ddim_sample_loop(
-                            ema.ema_model, z_base_val, schedule, ddim_steps=50, num_loops=config.max_loops, device=device, verbose=False
-                        )
-                        img_pred = vae.decode(z_pred_hq)
-
                         # Create arrow tensors for the batch
                         _, _, H, W = val_base.shape
                         arrow_w = max(24, int(W * 0.35))
